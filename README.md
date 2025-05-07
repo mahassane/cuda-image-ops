@@ -2,22 +2,15 @@ Image Processing with CUDA focuses on accelerating fundamental image processing 
 
 Key Features:
 Image convolution:
+
 • Data partitioning: Shared Memory tiling.
+
 • Constant memory for masks.
+
 • Multiple streaming.
+
 • Comparing usage of pinned, unified, and pageable memories.
 
 Histogram Computation:
+
 • Comparing privitaization vs Atomic adds.
-
-How to run:
-Create output directory
-Run commands:
-nvcc kernel.cu -o kernel
-./kernel <input_directory> <output_directory> <mask_path>
-
-For histogram
-Create output directory
-Run commands:
-nvcc kernel.cu -o kernel
-./kernel <input_directory> <output_directory>
