@@ -9,3 +9,15 @@ Image convolution:
 
 Histogram Computation:
 • Comparing privitaization vs Atomic adds.
+
+How to run:
+Create output directory
+Run commands:
+nvcc kernel.cu -o kernel
+./kernel <input_directory> <output_directory> <mask_path>
+
+For histogram
+Create output directory
+Run commands:
+nvcc kernel.cu -o kernel
+./kernel <input_directory> <output_directory>
