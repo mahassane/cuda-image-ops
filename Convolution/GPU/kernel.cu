@@ -70,9 +70,6 @@ int main(int argc, char **argv) {
     }
     fclose(file);
 
-    // Copy mask to constant memory
-    cudaMemcpyToSymbol(shared_mask, mask, mask_size * mask_size * sizeof(float));
-
     DIR *dir = opendir(argv[1]);
 
     struct dirent *entry;
@@ -108,43 +105,65 @@ int main(int argc, char **argv) {
     cudaEventCreate(&stop);
 
     float elapsed_time = 0.0f;
-    float time = 0.0f;
 
+    cudaStream_t stream[2];
+    cudaStreamCreate(&stream[0]);
+    cudaStreamCreate(&stream[1]);
+
+    unsigned char *h_output[100];
+    unsigned char *d_input[100];
+    unsigned char *d_output[100];
+
+    // Copy mask to constant memory
+    cudaMemcpyToSymbol(shared_mask, mask, mask_size * mask_size * sizeof(float), 0, cudaMemcpyHostToDevice);
+
+    cudaEventRecord(start);
     for (int i = 0; i < images_count; i++) {
         size_t img_size = images[i].width * images[i].height * images[i].channels * sizeof(unsigned char);
 
-        // Allocate host memory for output image
-        unsigned char *h_output = (unsigned char *)malloc(img_size);
+        int stream_id = i % 2;
+
+        // Allocate pinned host memory
+        unsigned char* pinned_input;
+        cudaMallocHost((void **)&pinned_input, img_size);
+        memcpy(pinned_input, images[i].data, img_size);
+        cudaMallocHost((void **)&h_output[i], img_size);
 
         // Allocate device memory
-        unsigned char *d_input, *d_output;
-        cudaMalloc((void **)&d_input, img_size);
-        cudaMalloc((void **)&d_output, img_size);
+        cudaMalloc((void **)&d_input[i], img_size);
+        cudaMalloc((void **)&d_output[i], img_size);
 
         // Copy image data to device
-        cudaMemcpy(d_input, images[i].data, img_size, cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(d_input[i], pinned_input, img_size, cudaMemcpyHostToDevice, stream[stream_id]);
 
         // Kernel launch
-        cudaEventRecord(start);
         dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
         dim3 gridDim((images[i].width + TILE_WIDTH - 1) / TILE_WIDTH, (images[i].height + TILE_WIDTH - 1) / TILE_WIDTH);
-        convolve_o_tiling<<<gridDim, blockDim>>>(d_input, d_output, mask_size, images[i].width, images[i].height, images[i].channels);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time, start, stop);
-        elapsed_time += time;
+        convolve_o_tiling<<<gridDim, blockDim, 0, stream[stream_id]>>>(d_input[i], d_output[i], mask_size, images[i].width, images[i].height, images[i].channels);
 
         // Copy output data to host
-        cudaMemcpy(h_output, d_output, img_size, cudaMemcpyDeviceToHost);
-        cudaFree(d_input);
-        cudaFree(d_output);
+        cudaMemcpyAsync(h_output[i], d_output[i], img_size, cudaMemcpyDeviceToHost, stream[stream_id]);
+    }
 
+    cudaStreamSynchronize(stream[0]);
+    cudaStreamSynchronize(stream[1]);
+    
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed_time, start, stop);
+
+    for (int i = 0; i < images_count; i++) {    
         char output_path[1024];
         snprintf(output_path, sizeof(output_path), "%s/filtered_%s", argv[2], images[i].filename);
-        stbi_write_png(output_path, images[i].width, images[i].height, images[i].channels, h_output, images[i].width * images[i].channels);
-
-        free(h_output);
+        stbi_write_png(output_path, images[i].width, images[i].height, images[i].channels, h_output[i], images[i].width * images[i].channels);
+    
+        cudaFree(d_input[i]);
+        cudaFree(d_output[i]);
+        cudaFreeHost(h_output[i]);
     }
+
+    cudaStreamDestroy(stream[0]);
+    cudaStreamDestroy(stream[1]);
 
     // Performance results
     printf("Total processing time for %d images: %3f ms\n", images_count, elapsed_time);
