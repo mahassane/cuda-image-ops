@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
     Image images[100];
     int images_count = 0;
 
-    while ((entry = readdir(dir)) != NULL && images_count < 100) {
+    while ((entry = readdir(dir)) != NULL && images_count < 80) {
         if (entry->d_type == DT_REG) {
             snprintf(filepath, sizeof(filepath), "%s/%s", argv[1], entry->d_name);
 
@@ -92,6 +92,7 @@ int main(int argc, char **argv) {
                 images[images_count].height = height;
                 images[images_count].channels = channels;
                 strncpy(images[images_count].filename, entry->d_name, sizeof(images[images_count].filename));
+                printf("%dx%d\n", width, height, channels);
                 images_count++;
             } else {
                 printf("Failed to load image: %s.\n", filepath);
